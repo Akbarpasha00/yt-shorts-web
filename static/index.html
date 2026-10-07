@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube to Shorts</title>
+<style>
+:root{--bg:#f6f6f8;--card:#fff;--tx:#17171c;--mut:#6b6b76;--ac:#e5322d;--bd:#e3e3e8}
+@media (prefers-color-scheme:dark){:root{--bg:#111114;--card:#1b1b20;--tx:#f2f2f5;--mut:#9a9aa6;--bd:#2b2b33}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--tx)}
+main{max-width:860px;margin:0 auto;padding:32px 16px}
+h1{margin:0 0 4px;font-size:28px}.sub{color:var(--mut);margin:0 0 24px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:20px;margin-bottom:20px}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+input,select{width:100%;padding:11px 12px;border-radius:9px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font-size:15px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+button,.btn{margin-top:16px;padding:12px 18px;border:0;border-radius:9px;background:var(--ac);color:#fff;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+button:disabled{opacity:.5;cursor:wait}
+.bar{height:8px;background:var(--bd);border-radius:99px;overflow:hidden;margin:12px 0}
+.bar>div{height:100%;width:0;background:var(--ac);transition:width .4s}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-top:14px}
+.clip video{width:100%;aspect-ratio:9/16;background:#000;border-radius:10px}
+.clip a{font-size:13px;color:var(--ac)}
+.err{color:var(--ac)}.hide{display:none}.note{font-size:12px;color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+  <h1>YouTube → Shorts</h1>
+  <p class="sub">Paste a link. Get 9:16 clips, sized automatically from the video length.</p>
+
+  <div class="card">
+    <label for="url">YouTube link</label>
+    <input id="url" placeholder="https://www.youtube.com/watch?v=...">
+    <div class="row">
+      <div><label for="mode">9:16 style</label>
+        <select id="mode"><option value="blur">Fit with blurred background</option><option value="crop">Center crop (fill screen)</option></select></div>
+      <div><label for="len">Seconds per short</label>
+        <select id="len"><option value="">Auto (based on video length)</option><option>15</option><option>30</option><option>45</option><option>60</option><option>90</option></select></div>
+    </div>
+    <button id="go">Create shorts</button>
+    <p class="note">Only use videos you own or have permission to reuse.</p>
+  </div>
+
+  <div class="card hide" id="prog">
+    <strong id="st">Starting…</strong>
+    <div class="bar"><div id="fill"></div></div>
+    <span id="msg" class="note"></span>
+  </div>
+
+  <div class="card hide" id="res">
+    <strong id="rt"></strong>
+    <div class="grid" id="grid"></div>
+    <a class="btn" id="zip" href="#">Download all (.zip)</a>
+  </div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const LABEL={queued:"Waiting in queue…",checking:"Checking video…",downloading:"Downloading video…",converting:"Converting to 9:16…"};
+$("go").onclick=async()=>{
+  $("go").disabled=true;$("res").classList.add("hide");$("prog").classList.remove("hide");
+  $("msg").textContent="";$("msg").className="note";$("fill").style.width="3%";$("st").textContent="Starting…";
+  try{
+    const r=await fetch("/api/jobs",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({url:$("url").value,mode:$("mode").value,length:$("len").value?+$("len").value:null})});
+    const j=await r.json(); if(!r.ok) throw new Error(j.detail||"Request failed");
+    poll(j.id);
+  }catch(e){fail(e.message)}
+};
+function fail(m){$("st").textContent="Something went wrong";$("msg").textContent=m;$("msg").className="err";$("go").disabled=false}
+async function poll(id){
+  const r=await fetch("/api/jobs/"+id); const j=await r.json();
+  if(!r.ok) return fail(j.detail);
+  if(j.status==="error") return fail(j.error);
+  if(j.status==="done"){
+    $("prog").classList.add("hide");$("res").classList.remove("hide");$("go").disabled=false;
+    $("rt").textContent=j.total+" short"+(j.total>1?"s":"")+" · ~"+j.seg_seconds+"s each";
+    $("grid").innerHTML=j.files.map(f=>`<div class="clip"><video controls preload="metadata" src="/files/${id}/${f}"></video><a href="/files/${id}/${f}" download>${f}</a></div>`).join("");
+    $("zip").href=`/files/${id}/all_shorts.zip`; return;
+  }
+  $("st").textContent=LABEL[j.status]||j.status;
+  if(j.status==="converting"){$("fill").style.width=(10+90*j.done/j.total)+"%";$("msg").textContent=j.done+" / "+j.total+" clips";}
+  else $("fill").style.width=j.status==="downloading"?"8%":"4%";
+  setTimeout(()=>poll(id),1500);
+}
+</script>
+</body>
+</html>
