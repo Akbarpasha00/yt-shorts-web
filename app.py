@@ -37,10 +37,15 @@ def sh(cmd):
 
 
 @contextmanager
-def yt_dlp_cookies() -> Iterator[Path | None]:
+def yt_dlp_auth_args() -> Iterator[list[str]]:
+    browser = os.getenv("YT_COOKIES_FROM_BROWSER")
+    if browser:
+        yield ["--cookies-from-browser", browser]
+        return
+
     cookies = os.getenv("YT_COOKIES")
     if not cookies:
-        yield None
+        yield []
         return
 
     cookie_path = None
@@ -48,7 +53,7 @@ def yt_dlp_cookies() -> Iterator[Path | None]:
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".txt", delete=False) as f:
             cookie_path = Path(f.name)
             f.write(cookies)
-        yield cookie_path
+        yield ["--cookies", str(cookie_path)]
     finally:
         if cookie_path is not None:
             cookie_path.unlink(missing_ok=True)
@@ -84,8 +89,7 @@ def process(job_id, url, mode, length):
     try:
         d.mkdir(parents=True, exist_ok=True)
         job["status"] = "checking"
-        with yt_dlp_cookies() as cookie_path:
-            cookie_args = ["--cookies", str(cookie_path)] if cookie_path else []
+        with yt_dlp_auth_args() as cookie_args:
             dur = int(float(sh(["yt-dlp", *cookie_args, "--no-playlist", "--print", "duration", url])))
             if dur > MAX_MINUTES * 60:
                 raise RuntimeError(f"Video is longer than {MAX_MINUTES} minutes.")
@@ -116,7 +120,14 @@ def process(job_id, url, mode, length):
         job["status"] = "done"
     except Exception as e:
         job["status"] = "error"
-        job["error"] = str(e)
+        error = str(e)
+        if "sign in to confirm" in error.lower():
+            job["error"] = (
+                "YouTube blocked this server. Cookies may not work from a hosted server IP. "
+                "Run the app on your PC with a signed-in browser instead; see the README."
+            )
+        else:
+            job["error"] = error
 
 
 def cleaner():
