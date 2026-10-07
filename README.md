@@ -14,8 +14,9 @@ video is split into equal parts so there is no tiny last clip.
     docker run -p 8000:8000 yt-shorts
 
 ## Deploy online
-Any host that runs Docker works (Render, Railway, Fly.io, a VPS).
-Pick a plan with at least 1 GB RAM and a few GB of disk; video conversion is CPU-heavy.
+For Render, use the [one-click deploy link](https://render.com/deploy?repo=https://github.com/Akbarpasha00/yt-shorts-web). It uses the `render.yaml` Blueprint in this repository.
+
+The configured free instance may spin down when idle and has limited memory and ephemeral storage. Video conversions may fail for larger videos, and in-progress jobs or results can be lost when the service restarts. For reliable conversions, use a Docker host with at least 1 GB RAM and a few GB of disk; video conversion is CPU-heavy.
 
 Environment variables:
 - MAX_MINUTES (default 60)  longest video accepted
