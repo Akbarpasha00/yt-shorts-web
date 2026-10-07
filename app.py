@@ -1,6 +1,8 @@
 """YouTube -> 9:16 Shorts web service (FastAPI + yt-dlp + ffmpeg)."""
-import os, re, shutil, subprocess, threading, time, uuid, zipfile
+import os, re, shutil, subprocess, tempfile, threading, time, uuid, zipfile
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -34,6 +36,24 @@ def sh(cmd):
     return r.stdout.strip()
 
 
+@contextmanager
+def yt_dlp_cookies() -> Iterator[Path | None]:
+    cookies = os.getenv("YT_COOKIES")
+    if not cookies:
+        yield None
+        return
+
+    cookie_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".txt", delete=False) as f:
+            cookie_path = Path(f.name)
+            f.write(cookies)
+        yield cookie_path
+    finally:
+        if cookie_path is not None:
+            cookie_path.unlink(missing_ok=True)
+
+
 def auto_length(total):
     if total <= 60: return total
     if total <= 300: return 30
@@ -64,14 +84,16 @@ def process(job_id, url, mode, length):
     try:
         d.mkdir(parents=True, exist_ok=True)
         job["status"] = "checking"
-        dur = int(float(sh(["yt-dlp", "--no-playlist", "--print", "duration", url])))
-        if dur > MAX_MINUTES * 60:
-            raise RuntimeError(f"Video is longer than {MAX_MINUTES} minutes.")
+        with yt_dlp_cookies() as cookie_path:
+            cookie_args = ["--cookies", str(cookie_path)] if cookie_path else []
+            dur = int(float(sh(["yt-dlp", *cookie_args, "--no-playlist", "--print", "duration", url])))
+            if dur > MAX_MINUTES * 60:
+                raise RuntimeError(f"Video is longer than {MAX_MINUTES} minutes.")
 
-        job["status"] = "downloading"
-        src = d / "source.mp4"
-        sh(["yt-dlp", "--no-playlist", "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
-            "--merge-output-format", "mp4", "-o", str(src), url])
+            job["status"] = "downloading"
+            src = d / "source.mp4"
+            sh(["yt-dlp", *cookie_args, "--no-playlist", "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+                "--merge-output-format", "mp4", "-o", str(src), url])
 
         total = float(sh(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                           "-of", "default=nw=1:nk=1", str(src)]))

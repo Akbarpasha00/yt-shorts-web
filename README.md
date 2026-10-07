@@ -22,8 +22,10 @@ Environment variables:
 - MAX_MINUTES (default 60)  longest video accepted
 - KEEP_HOURS  (default 2)   how long results are kept before auto-delete
 - MAX_PARALLEL (default 1)  simultaneous conversions
+- YT_COOKIES (optional)     contents of a yt-dlp-compatible `cookies.txt` file
 
 ## Notes
+- Set `YT_COOKIES` as a secret environment variable on your host; never commit or share the cookie contents. Cookies grant access to your account and may expire or expose it if mishandled.
 - YouTube often blocks downloads from cloud/datacenter IPs. If that happens, run it on a
   home server/VPS with a residential connection, or give yt-dlp a cookies file.
 - Keep yt-dlp updated (`pip install -U yt-dlp`); YouTube changes break old versions.
